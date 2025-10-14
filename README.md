@@ -24,13 +24,12 @@ http://localhost/csp/user/Globals.SizeMonitor.cls
 ## 📸 Screenshots
 
 ### 📊 Chart View (Paginated)
-<img width="1278" height="773" alt="image" src="https://github.com/user-attachments/assets/f9a87e66-7e4e-446e-9310-ac60f1012d4a" />
+<img width="1900" height="888" alt="image" src="https://github.com/user-attachments/assets/3c9c94e1-3a9c-43d1-a0da-bc42ce5b12f7" />
+
 
 ### 📋 Globals Table View
-<img width="1296" height="540" alt="image" src="https://github.com/user-attachments/assets/9ec5472b-e0b9-4c31-a765-9cac47836aa9" />
+<img width="1389" height="836" alt="image" src="https://github.com/user-attachments/assets/b31e2225-0586-4bf9-8e35-a0fe33f3c903" />
+
 
 
 ---
-
-## 📁 Folder Structure
-
