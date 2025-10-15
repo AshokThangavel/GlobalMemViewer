@@ -19,6 +19,25 @@ The **Global Memory Viewer** is a lightweight, web-based CSP application for **I
 ✅ Uses **Chart.js** and pure CSP – no external frameworks required
 
 ---
+## ⚙️ Installation
+
+You can install ZIRIS DevHub by cloning this repository or importing the classes into your IRIS namespace:
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/AshokThangavel/GlobalMemViewer.git
+2. **Navigate to the project directory**:
+
+   ```bash
+   cd GlobalMemViewer
+   ```
+
+3. **Run the docker compose file**:
+
+   ```bash
+   docker compose -f docker-compose.yml up -d --build
+   ```
+---
+
 http://localhost/csp/user/Globals.SizeMonitor.cls
 
 ## 📸 Screenshots
@@ -30,6 +49,5 @@ http://localhost/csp/user/Globals.SizeMonitor.cls
 ### 📋 Globals Table View
 <img width="1389" height="836" alt="image" src="https://github.com/user-attachments/assets/b31e2225-0586-4bf9-8e35-a0fe33f3c903" />
 
+----
 
-
----
