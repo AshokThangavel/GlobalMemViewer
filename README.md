@@ -7,7 +7,7 @@ The **Global Memory Viewer** is a lightweight, web-based CSP application for **I
 - Browse and **search** global usage data in a **sortable, filterable table**.
 - Switch between **namespaces** to view global storage details per namespace.
 
----
+> **Note:** large number of global variables in your namespace may increase calculation time and slow down the application.
 
 ## 🔧 Features
 
