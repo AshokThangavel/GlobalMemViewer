@@ -1,5 +1,6 @@
 Class Globals.SizeMonitor Extends %CSP.Page
 {
+
 Parameter Title As STRING [ Final ] = "Global Memory Viewer";
 
 ClassMethod OnPage() As %Status
@@ -27,19 +28,19 @@ ClassMethod OnPageHEAD() As %Boolean
 {
 	Write "<head>",!
 	Write "<meta charset=""UTF-8"">"
-	write "<meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">"
+	Write "<meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">"
 	Write "<link rel=""shortcut icon"" href=""portal/ISC_IRIS_icon.ico"">"
 	Write !,"<title>"_..#Title_"</title>",!
 	Write " <link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"">",!
-	W "<!-- External Libraries -->"
-	W "<script src=""https://cdn.jsdelivr.net/npm/chart.js""></script>"
+	Write "<!-- External Libraries -->"
+	Write "<script src=""https://cdn.jsdelivr.net/npm/chart.js""></script>"
 	Write " <script src=""https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom""></script>"
-	W "<link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"">"
+	Write "<link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"">"
 	Write "<style>",!
 	Do ..LoadCSS()
 	Write "</style>",!
 	Write "</head>",!
-	W ..HyperEventHead(0,0)
+	Write ..HyperEventHead(0,0)
 	Return $$$OK
 }
 
@@ -62,11 +63,12 @@ ClassMethod RenderChart() As %Status
         <!-- Namespace Selector -->
         <div class="dashboard-header">
             <div class="dashboard-title">Namespace Globals</div>
+            <small id="lastUpdated" style="font-size: 0.8rem; color: #666; margin-left: 10px;"></small>
             <div class="namespace-selector">
                 <label for="namespace">Namespace:</label>
                 <select id="namespace" class="namespace-dropdown">
         >
-        
+
 	Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT Nsp FROM %SYS.Namespace_List()")
 	While rs.%Next() {
 		Write "<option value="""_rs.Nsp_""">"_rs.Nsp_"</option>"
@@ -125,7 +127,7 @@ ClassMethod RenderChart() As %Status
                     <input type="text" id="searchBox" class="search-box" placeholder="Search globals by name...">
                 </div>
             </div>
-            
+
             <div id="tableWrapper">
                 <table id="globalsTable" class="data-table">
                     <thead>
@@ -140,12 +142,12 @@ ClassMethod RenderChart() As %Status
                         <!-- Filled by JavaScript -->
                     </tbody>
                 </table>
-                
+
                 <div id="noResults" class="no-results" style="display: none;">
                     <i class="fas fa-search"></i>
                     <p>No globals found matching your search criteria.</p>
                 </div>
-                
+
                 <div id="pagination" class="pagination">
                     <!-- Pagination buttons will be added here -->
                 </div>
@@ -165,7 +167,7 @@ ClassMethod RenderChart() As %Status
 
 ClassMethod LoadCSS()
 {
-	Set obj = ##class(%Dictionary.CompiledXData).%OpenId($Classname()_"||Style")
+	Set obj = ##class(%Dictionary.CompiledXData).%OpenId($ClassName()_"||Style")
 	Return:(obj = "") $$$OK
 	Set xdata = obj.Data
 	Set status = ##class(%XML.TextReader).ParseStream(xdata, .textreader)
@@ -189,24 +191,67 @@ XData Style
 
 ClassMethod GetGlobalSize(Namespace As %String = "%SYS") As %String
 {
-	Set response = []
-	Set:Namespace="%SYS" Namespace="IRISLIB"
-	Set dir = $LG(^["%SYS"]SYS("CONFIG","IRIS","Databases",$ZCVT(Namespace,"U")),3)
-	If dir="" Quit response.%ToJSON()
-	Set ResultSet= ##class(%SYS.GlobalQuery).SizeFunc(dir)
-	While ResultSet.%Next() {
-		Set json = { "name":(ResultSet.%GetData(1))}
-		Do json.%Set("allocated",ResultSet.%GetData(2),"number")
-		Do json.%Set("used",ResultSet.%GetData(3),"number")
-		Do response.%Push(json)
-	}
-	Return response.%ToJSON()
+    If $Data(^ZGbl.SizeMonitor.Cache(Namespace)) {
+        Do ..TriggerUpdate(Namespace, .response)
+        Return response
+    }
+	Do ..RunCalculation(Namespace)
+    Return ..GetLastUpdatedData(Namespace)
+}
+
+ClassMethod TriggerUpdate(Namespace As %String, Response) As %String
+{
+    Set status = $Get(^ZGbl.SizeMonitor.Cache(Namespace, "Status"))
+    Set startTime = $ListGet(status, 2)
+    If ($ListGet(status, 1) = "Completed") {
+        Job ..RunCalculation(Namespace)
+    }
+    Set Response = ..GetLastUpdatedData(Namespace)
+}
+
+ClassMethod GetLastUpdatedData(Namespace) As %String
+{
+    If '$Data(^ZGbl.SizeMonitor.Cache(Namespace, "Data")) {
+        Return {"lastUpdate":(""),"globals":([])}
+    }
+    Set data = ^ZGbl.SizeMonitor.Cache(Namespace, "Data")
+    Set date = $ListGet(data,1)
+    Set data = {}.%FromJSON($ListGet(data,2))
+    Set response = {"lastUpdate":(date),"globals":(data)}
+    Return response.%ToJSON()
+}
+
+ClassMethod RunCalculation(Namespace As %String)
+{
+    Try {
+        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Status") = $ListBuild("Running", $ZDatetime($Horolog,3))
+        Set response = []
+        Set:Namespace="%SYS" Namespace="IRISLIB"
+        Set dir = $ListGet(^["%SYS"]SYS("CONFIG","IRIS","Databases",$ZConvert(Namespace,"U")),3)
+        Set ResultSet= ##class(%SYS.GlobalQuery).SizeFunc(dir)
+        While ResultSet.%Next() {
+            Set json = { "name":(ResultSet.%GetData(1))}
+            Do json.%Set("allocated",ResultSet.%GetData(2),"number")
+            Do json.%Set("used",ResultSet.%GetData(3),"number")
+            Do response.%Push(json)
+        }
+        Tstart
+        Set:Namespace="IRISLIB" Namespace="%SYS"
+        Kill ^ZGbl.SizeMonitor.Cache(Namespace)
+        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Data") = $ListBuild($ZDatetime($Horolog,3),response.%ToJSON())
+        Set ^ZGbl.SizeMonitor.Cache(Namespace, "LastUpdated") = $ZDatetime($Horolog,3)
+        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Status") = $ListBuild("Completed", $ZDatetime($Horolog,3))
+        Tcommit
+
+    } Catch {
+        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Status") = $ListBuild("Error", $ZDatetime($Horolog,3))
+    }
 }
 
 ClassMethod Scripts()
 {
 	&HTML<
-	
+
 	<script language="javascript">
         // Global variables
         let globalsData = [];
@@ -232,19 +277,19 @@ ClassMethod Scripts()
                 currentNamespace = savedNamespace;
                 namespaceDropdown.value = savedNamespace;
             }
-            
+
             // Load data for the current namespace
             loadNamespaceData(currentNamespace);
-            
+
             // Add event listeners
             namespaceDropdown.addEventListener('change', handleNamespaceChange);
             searchBox.addEventListener('input', handleSearch);
-            
+
             // Add sort event listeners to table headers
             document.querySelectorAll('th[data-sort]').forEach(th => {
                 th.addEventListener('click', () => handleSort(th.dataset.sort));
             });
-            
+
             // Add chart control event listeners
             document.getElementById('toggleChartType').addEventListener('click', toggleChartType);
             document.getElementById('resetZoom').addEventListener('click', resetZoom);
@@ -254,52 +299,32 @@ ClassMethod Scripts()
         function handleNamespaceChange() {
             const newNamespace = namespaceDropdown.value;
             currentNamespace = newNamespace;
-            
             // Save selected namespace to localStorage
             localStorage.setItem('selectedNamespace', newNamespace);
-            
+
             // Load data for the new namespace
             loadNamespaceData(newNamespace);
-            
             showToast(`Switched to ${newNamespace} namespace`, 'info');
         }
-
-        // Load namespace data via API call
         function loadNamespaceData(namespace) {
-            // Show loading state
             showLoadingState();
-            
-            // Simulate API call with setTimeout
-            // In a real implementation, replace this with fetch() or axios
+
             setTimeout(() => {
                 try {
-                    // Call the ChangeNamespace method with the namespace parameter
-                    // This would be your actual API call
-                    const response = ChangeNamespace(namespace);
-                    
-                    // Process the response
-                    globalsData = response || [];
-                    
-                    // Add usage percentage to each global
+                    var response = ChangeNamespace(namespace);
+                    document.getElementById('lastUpdated').textContent = response.lastUpdate ? `(Last updated: ${response.lastUpdate})` : "(No data)";
+                    globalsData = response.globals || [];
                     globalsData.forEach(g => {
                         g.usage = g.allocated > 0 ? (g.used / g.allocated * 100) : 0;
                     });
-                    
-                    // Sort by used MB initially
                     globalsData.sort((a, b) => b.used - a.used);
-                    
-                    // Reset pagination and filters
+
                     currentPage = 1;
                     filteredData = [...globalsData];
                     sortDirection = {};
-                    
-                    // Update the UI
                     updateStats();
                     renderTable();
-                    
-                    // Hide loading state
                     hideLoadingState();
-                    
                     showToast(`Loaded ${globalsData.length} globals from ${namespace} namespace`, 'success');
                 } catch (error) {
                     console.error('Error loading namespace data:', error);
@@ -319,7 +344,7 @@ ClassMethod Scripts()
                     </td>
                 </tr>
             `;
-            
+
             // Disable controls during loading
             namespaceDropdown.disabled = true;
             searchBox.disabled = true;
@@ -341,7 +366,7 @@ ClassMethod Scripts()
             const totalAllocated = globalsData.reduce((sum, g) => sum + g.allocated, 0);
             const totalUsed = globalsData.reduce((sum, g) => sum + g.used, 0);
             const totalAvailable = totalAllocated - totalUsed;
-            
+
             document.getElementById('totalAllocated').textContent = totalAllocated.toFixed(2) + ' MB';
             document.getElementById('totalUsed').textContent = totalUsed.toFixed(2) + ' MB';
             document.getElementById('totalAvailable').textContent = totalAvailable.toFixed(2) + ' MB';
@@ -351,7 +376,7 @@ ClassMethod Scripts()
         // Handle search
         function handleSearch() {
             const filterText = searchBox.value.toLowerCase();
-            filteredData = globalsData.filter(g => 
+            filteredData = globalsData.filter(g =>
                 g.name.toLowerCase().includes(filterText)
             );
             currentPage = 1;
@@ -362,32 +387,32 @@ ClassMethod Scripts()
         function handleSort(sortBy) {
             // Toggle sort direction
             sortDirection[sortBy] = sortDirection[sortBy] === 'asc' ? 'desc' : 'asc';
-            
+
             // Update sort icons
             document.querySelectorAll('th i').forEach(icon => {
                 icon.className = 'fas fa-sort';
             });
-            
+
             const icon = document.querySelector(`th[data-sort="${sortBy}"] i`);
             icon.className = sortDirection[sortBy] === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
-            
+
             // Sort data
             filteredData.sort((a, b) => {
                 let valueA = a[sortBy];
                 let valueB = b[sortBy];
-                
+
                 if (typeof valueA === 'string') {
                     valueA = valueA.toLowerCase();
                     valueB = valueB.toLowerCase();
                 }
-                
+
                 if (sortDirection[sortBy] === 'asc') {
                     return valueA > valueB ? 1 : -1;
                 } else {
                     return valueA < valueB ? 1 : -1;
                 }
             });
-            
+
             currentPage = 1;
             renderTable();
         }
@@ -395,22 +420,22 @@ ClassMethod Scripts()
         // Render table with pagination
         function renderTable() {
             tableBody.innerHTML = '';
-            
+
             if (filteredData.length === 0) {
                 noResults.style.display = 'block';
                 pagination.innerHTML = '';
-                
+
                 // Update chart with empty data
                 updateChart([]);
                 return;
             }
-            
+
             noResults.style.display = 'none';
-            
+
             const startIndex = (currentPage - 1) * itemsPerPage;
             const endIndex = startIndex + itemsPerPage;
             const pageData = filteredData.slice(startIndex, endIndex);
-            
+
             pageData.forEach(g => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -426,7 +451,7 @@ ClassMethod Scripts()
                 `;
                 tableBody.appendChild(row);
             });
-            
+
             renderPagination();
             updateChart(pageData); // Update chart with current page data
         }
@@ -435,9 +460,9 @@ ClassMethod Scripts()
         function renderPagination() {
             pagination.innerHTML = '';
             const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-            
+
             if (totalPages <= 1) return;
-            
+
             // Previous button
             const prevBtn = document.createElement('button');
             prevBtn.className = 'page-btn';
@@ -450,16 +475,16 @@ ClassMethod Scripts()
                 }
             });
             pagination.appendChild(prevBtn);
-            
+
             // Page numbers
             const maxVisiblePages = 5;
             let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
             let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-            
+
             if (endPage - startPage < maxVisiblePages - 1) {
                 startPage = Math.max(1, endPage - maxVisiblePages + 1);
             }
-            
+
             for (let i = startPage; i <= endPage; i++) {
                 const pageBtn = document.createElement('button');
                 pageBtn.className = 'page-btn' + (i === currentPage ? ' active' : '');
@@ -470,7 +495,7 @@ ClassMethod Scripts()
                 });
                 pagination.appendChild(pageBtn);
             }
-            
+
             // Next button
             const nextBtn = document.createElement('button');
             nextBtn.className = 'page-btn';
@@ -496,20 +521,20 @@ ClassMethod Scripts()
             // Sort the page data by used MB for the chart
             const sortedPageData = [...pageData].sort((a, b) => b.used - a.used);
             const topInPage = sortedPageData.slice(0, 10); // Take top 10 from current page
-            
+
             const labels = topInPage.map(g => truncateName(g.name));
             const allocatedMB = topInPage.map(g => g.allocated);
             const usedMB = topInPage.map(g => g.used);
-            
+
             // Update chart data
             globalsChart.data.labels = labels;
             globalsChart.data.datasets[0].data = allocatedMB;
             globalsChart.data.datasets[1].data = usedMB;
-            
+
             // Update chart title to show current page
             const totalPages = Math.ceil(filteredData.length / itemsPerPage);
             globalsChart.options.plugins.title.text = `Page ${currentPage} of ${totalPages} - Top ${topInPage.length} by Used MB`;
-            
+
             // Update the chart
             globalsChart.update();
         }
@@ -518,23 +543,23 @@ ClassMethod Scripts()
         function toggleChartType() {
             // Destroy existing chart
             globalsChart.destroy();
-            
+
             // Toggle chart type
             chartType = chartType === 'bar' ? 'line' : 'bar';
             chartConfig.type = chartType;
-            
+
             // Create new chart
             globalsChart = new Chart(ctx, chartConfig);
-            
+
             // Update chart with current page data
             const startIndex = (currentPage - 1) * itemsPerPage;
             const endIndex = startIndex + itemsPerPage;
             const pageData = filteredData.slice(startIndex, endIndex);
             updateChart(pageData);
-            
+
             const icon = document.querySelector('#toggleChartType i');
             icon.className = chartType === 'bar' ? 'fas fa-chart-bar' : 'fas fa-chart-line';
-            
+
             showToast(`Chart type changed to ${chartType}`, 'info');
         }
 
@@ -548,10 +573,10 @@ ClassMethod Scripts()
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
             const toastMessage = document.getElementById('toastMessage');
-            
+
             toast.className = `toast ${type}`;
             toastMessage.textContent = message;
-            
+
             // Update icon based on type
             const icon = toast.querySelector('i');
             if (type === 'success') {
@@ -561,9 +586,9 @@ ClassMethod Scripts()
             } else {
                 icon.className = 'fas fa-info-circle';
             }
-            
+
             toast.classList.add('show');
-            
+
             setTimeout(() => {
                 toast.classList.remove('show');
             }, 3000);
@@ -611,7 +636,7 @@ ClassMethod Scripts()
                     }
                 },
                 plugins: {
-                    legend: { 
+                    legend: {
                         position: 'top',
                         labels: {
                             boxWidth: 15,
@@ -648,12 +673,12 @@ ClassMethod Scripts()
                             threshold: 5,
                         },
                         zoom: {
-                            wheel: { 
+                            wheel: {
                                 enabled: true,
-                                speed: 0.1 
+                                speed: 0.1
                             },
-                            pinch: { 
-                                enabled: true 
+                            pinch: {
+                                enabled: true
                             },
                             mode: 'y',
                             limits: {
@@ -674,6 +699,7 @@ ClassMethod Scripts()
         function ChangeNamespace(namespace) {
             	globalsData = #server(..GetGlobalSize(namespace))#;
 				globalsData = JSON.parse(globalsData);
+                console.log(globalsData);
 				return globalsData
         }
     </script>
