@@ -43,7 +43,8 @@ http://localhost/csp/user/Globals.SizeMonitor.cls
 ## 📸 Screenshots
 
 ### 📊 Chart View (Paginated)
-<img width="1900" height="888" alt="image" src="https://github.com/user-attachments/assets/3c9c94e1-3a9c-43d1-a0da-bc42ce5b12f7" />
+<img width="1859" height="979" alt="image" src="https://github.com/user-attachments/assets/dc50f0f1-15c2-4623-a07b-e168ffa99b50" />
+
 
 
 ### 📋 Globals Table View
