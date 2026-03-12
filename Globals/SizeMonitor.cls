@@ -3,53 +3,6 @@ Class Globals.SizeMonitor Extends %CSP.Page
 
 Parameter Title As STRING [ Final ] = "Global Memory Viewer";
 
-ClassMethod OnPage() As %Status
-{
-	Do ..OnPageCSPROOT()
-	Return $$$OK
-}
-
-ClassMethod OnPageCSPROOT() As %Boolean
-{
-	Do ..OnPageHTML()
-}
-
-ClassMethod OnPageHTML() As %Boolean
-{
-	Write "<html>"
-	Write !
-	Do ..OnPageHEAD()
-	Do ..OnPageBODY()
-	Write !,"</html>"
-	Return $$$OK
-}
-
-ClassMethod OnPageHEAD() As %Boolean
-{
-	Write "<head>",!
-	Write "<meta charset=""UTF-8"">"
-	Write "<meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">"
-	Write "<link rel=""shortcut icon"" href=""portal/ISC_IRIS_icon.ico"">"
-	Write !,"<title>"_..#Title_"</title>",!
-	Write " <link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"">",!
-	Write "<!-- External Libraries -->"
-	Write "<script src=""https://cdn.jsdelivr.net/npm/chart.js""></script>"
-	Write " <script src=""https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom""></script>"
-	Write "<link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"">"
-	Write "<style>",!
-	Do ..LoadCSS()
-	Write "</style>",!
-	Write "</head>",!
-	Write ..HyperEventHead(0,0)
-	Return $$$OK
-}
-
-ClassMethod OnPageBODY() As %Boolean
-{
-	Do ..RenderChart()
-	Return $$$OK
-}
-
 ClassMethod RenderChart() As %Status
 {
 	&HTML<
@@ -69,10 +22,16 @@ ClassMethod RenderChart() As %Status
                 <select id="namespace" class="namespace-dropdown">
         >
 
-	Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT Nsp FROM %SYS.Namespace_List()")
+	/*Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT Nsp FROM %SYS.Namespace_List()")
 	While rs.%Next() {
 		Write "<option value="""_rs.Nsp_""">"_rs.Nsp_"</option>"
-	}
+	}*/
+    Set tStatus = ##class(%SYS.Namespace).ListAll(.namespaces)
+    Set ns = ""
+    For {
+        Set ns = $Order(namespaces(ns)) Quit:ns=""
+        Write "<option value="""_ns_""">"_ns_"</option>"
+    }
    &HTML<
 	</select>
 	</div>
@@ -191,7 +150,7 @@ XData Style
 
 ClassMethod GetGlobalSize(Namespace As %String = "%SYS") As %String
 {
-    If $Data(^ZGbl.SizeMonitor.Cache(Namespace)) {
+    If $Data(^GlobalSizeMonitor.Cache(Namespace)) {
         Do ..TriggerUpdate(Namespace, .response)
         Return response
     }
@@ -201,7 +160,7 @@ ClassMethod GetGlobalSize(Namespace As %String = "%SYS") As %String
 
 ClassMethod TriggerUpdate(Namespace As %String, Response) As %String
 {
-    Set status = $Get(^ZGbl.SizeMonitor.Cache(Namespace, "Status"))
+    Set status = $Get(^GlobalSizeMonitor.Cache(Namespace, "Status"))
     Set startTime = $ListGet(status, 2)
     If ($ListGet(status, 1) = "Completed") {
         Job ..RunCalculation(Namespace)
@@ -211,10 +170,10 @@ ClassMethod TriggerUpdate(Namespace As %String, Response) As %String
 
 ClassMethod GetLastUpdatedData(Namespace) As %String
 {
-    If '$Data(^ZGbl.SizeMonitor.Cache(Namespace, "Data")) {
+    If '$Data(^GlobalSizeMonitor.Cache(Namespace, "Data")) {
         Return {"lastUpdate":(""),"globals":([])}
     }
-    Set data = ^ZGbl.SizeMonitor.Cache(Namespace, "Data")
+    Set data = ^GlobalSizeMonitor.Cache(Namespace, "Data")
     Set date = $ListGet(data,1)
     Set data = {}.%FromJSON($ListGet(data,2))
     Set response = {"lastUpdate":(date),"globals":(data)}
@@ -224,11 +183,11 @@ ClassMethod GetLastUpdatedData(Namespace) As %String
 ClassMethod RunCalculation(Namespace As %String)
 {
     Try {
-        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Status") = $ListBuild("Running", $ZDatetime($Horolog,3))
+        Set ^GlobalSizeMonitor.Cache(Namespace, "Status") = $ListBuild("Running", $ZDatetime($Horolog,3))
         Set response = []
         Set:Namespace="%SYS" Namespace="IRISLIB"
         Set dir = $ListGet(^["%SYS"]SYS("CONFIG","IRIS","Databases",$ZConvert(Namespace,"U")),3)
-        Set ResultSet= ##class(%SYS.GlobalQuery).SizeFunc(dir)
+        Set ResultSet= ##class(%SYS.GlobalQuery).SizeFunc(dir,,,,,1)
         While ResultSet.%Next() {
             Set json = { "name":(ResultSet.%GetData(1))}
             Do json.%Set("allocated",ResultSet.%GetData(2),"number")
@@ -237,15 +196,30 @@ ClassMethod RunCalculation(Namespace As %String)
         }
         Tstart
         Set:Namespace="IRISLIB" Namespace="%SYS"
-        Kill ^ZGbl.SizeMonitor.Cache(Namespace)
-        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Data") = $ListBuild($ZDatetime($Horolog,3),response.%ToJSON())
-        Set ^ZGbl.SizeMonitor.Cache(Namespace, "LastUpdated") = $ZDatetime($Horolog,3)
-        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Status") = $ListBuild("Completed", $ZDatetime($Horolog,3))
+        Kill ^GlobalSizeMonitor.Cache(Namespace)
+        Set ^GlobalSizeMonitor.Cache(Namespace, "Data") = $ListBuild($ZDatetime($Horolog,3),response.%ToJSON())
+        Set ^GlobalSizeMonitor.Cache(Namespace, "LastUpdated") = $ZDatetime($Horolog,3)
+        Set ^GlobalSizeMonitor.Cache(Namespace, "Status") = $ListBuild("Completed", $ZDatetime($Horolog,3))
         Tcommit
 
     } Catch {
-        Set ^ZGbl.SizeMonitor.Cache(Namespace, "Status") = $ListBuild("Error", $ZDatetime($Horolog,3))
+        Set ^GlobalSizeMonitor.Cache(Namespace, "Status") = $ListBuild("Error", $ZDatetime($Horolog,3))
     }
+    Quit $$$OK
+}
+
+ClassMethod CalculateGlobalSizes()
+{
+    Set tStatus = ##class(%SYS.Namespace).ListAll(.namespaces)
+    Set wqm = ##class(%SYSTEM.WorkMgr).%New()
+	Set ns = ""
+    For {
+        Set ns = $Order(namespaces(ns))
+        Quit:ns=""
+        Do wqm.Queue("##class(Globals.SizeMonitor).RunCalculation",ns)
+    }
+    Set sc = wqm.Sync()
+    Quit
 }
 
 ClassMethod Scripts()
@@ -704,6 +678,53 @@ ClassMethod Scripts()
         }
     </script>
 	>
+}
+
+ClassMethod OnPage() As %Status
+{
+	Do ..OnPageCSPROOT()
+	Return $$$OK
+}
+
+ClassMethod OnPageCSPROOT() As %Boolean
+{
+	Do ..OnPageHTML()
+}
+
+ClassMethod OnPageHTML() As %Boolean
+{
+	Write "<html>"
+	Write !
+	Do ..OnPageHEAD()
+	Do ..OnPageBODY()
+	Write !,"</html>"
+	Return $$$OK
+}
+
+ClassMethod OnPageHEAD() As %Boolean
+{
+	Write "<head>",!
+	Write "<meta charset=""UTF-8"">"
+	Write "<meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">"
+	Write "<link rel=""shortcut icon"" href=""portal/ISC_IRIS_icon.ico"">"
+	Write !,"<title>"_..#Title_"</title>",!
+	Write " <link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"">",!
+	Write "<!-- External Libraries -->"
+	Write "<script src=""https://cdn.jsdelivr.net/npm/chart.js""></script>"
+	Write " <script src=""https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom""></script>"
+	Write "<link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"">"
+	Write "<style>",!
+	Do ..LoadCSS()
+	Write "</style>",!
+	Write "</head>",!
+	Write ..HyperEventHead(0,0)
+	Return $$$OK
+}
+
+ClassMethod OnPageBODY() As %Boolean
+{
+	Do ..RenderChart()
+	Return $$$OK
 }
 
 }
