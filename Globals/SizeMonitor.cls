@@ -342,6 +342,7 @@ ClassMethod Scripts()
             const totalAvailable = totalAllocated - totalUsed;
 
             document.getElementById('totalAllocated').textContent = totalAllocated.toFixed(2) + ' MB';
+            alert(totalUsed+totalAllocated);
             document.getElementById('totalUsed').textContent = totalUsed.toFixed(2) + ' MB';
             document.getElementById('totalAvailable').textContent = totalAvailable.toFixed(2) + ' MB';
             document.getElementById('globalCount').textContent = globalsData.length;
@@ -673,7 +674,6 @@ ClassMethod Scripts()
         function ChangeNamespace(namespace) {
             	globalsData = #server(..GetGlobalSize(namespace))#;
 				globalsData = JSON.parse(globalsData);
-                console.log(globalsData);
 				return globalsData
         }
     </script>
